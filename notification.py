@@ -1,7 +1,18 @@
+import os
 import requests
 import re
 
 class Notification:
+    def __init__(self):
+        token = os.environ.get("TELEGRAM_BOT_TOKEN")
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+        if token and token.startswith("YOUR_"):
+            token = None
+        if chat_id and chat_id.startswith("YOUR_"):
+            chat_id = None
+        self.telegram_bot_token = token
+        self.telegram_chat_id = chat_id
+
     def send_lotto_buying_message(self, body: dict, webhook_url: str) -> None:
         assert type(webhook_url) == str
 
@@ -136,10 +147,31 @@ class Notification:
             message = f"연금복권 - 다음 기회에... 🫠 (남은잔액 : {balance_str})"
             self._send_discord_webhook(webhook_url, message)
 
-    def _send_discord_webhook(self, webhook_url: str, message: str) -> None:        
-        if not webhook_url:
-            print(f"[Info] Webhook URL not found. Message: {message}")
+    def _send_discord_webhook(self, webhook_url: str, message: str) -> None:
+        if webhook_url:
+            try:
+                requests.post(webhook_url, json={"content": message}, timeout=10)
+            except Exception as e:
+                print(f"[Warn] Discord send failed: {e}")
+        else:
+            print(f"[Info] Discord webhook not set. Message: {message}")
+
+        self._send_telegram(message)
+
+    def _send_telegram(self, message: str) -> None:
+        if not self.telegram_bot_token or not self.telegram_chat_id:
             return
-        
-        payload = { "content": message }
-        requests.post(webhook_url, json=payload)
+
+        clean = message.replace("```ini\n", "").replace("```", "")
+        if len(clean) > 4000:
+            clean = clean[:3990] + "\n...(truncated)"
+
+        url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
+        try:
+            requests.post(
+                url,
+                json={"chat_id": self.telegram_chat_id, "text": clean},
+                timeout=10,
+            )
+        except Exception as e:
+            print(f"[Warn] Telegram send failed: {e}")
